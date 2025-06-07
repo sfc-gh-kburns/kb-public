@@ -24,7 +24,7 @@ def show_portal_config(conn, user_info):
     
     with tab4:
         st.subheader("⚙️ Portal Settings")
-        manage_portal_settings(conn)
+        manage_portal_settings(conn, user_info)
 
 def get_all_streamlit_apps(conn):
     """Get all Streamlit apps from the Snowflake account"""
@@ -703,7 +703,7 @@ def show_access_overview(conn):
             apps_without_permissions = len(portal_apps) - len(overview_df[overview_df['Access Value'] != 'No permissions configured']['App Title'].unique())
             st.metric("Apps Without Access", apps_without_permissions)
 
-def manage_portal_settings(conn):
+def manage_portal_settings(conn, user_info):
     """Manage general portal settings"""
     st.markdown("Configure general portal settings and maintenance tasks.")
     
@@ -737,6 +737,34 @@ def manage_portal_settings(conn):
     with col2:
         if st.button("📊 View Portal Statistics"):
             show_portal_statistics(conn)
+    
+    st.markdown("---")
+    
+    # User Roles Troubleshooting Section
+    st.markdown("### 🔍 User Roles Troubleshooting")
+    st.markdown("Display current user's roles for troubleshooting access issues.")
+    
+    # Display user information (using user_info passed from main app)
+    st.markdown(f"**Current User:** {user_info['username']}")
+    
+    if user_info['roles']:
+        st.markdown("**Your Assigned Roles:**")
+        for i, role in enumerate(user_info['roles'], 1):
+            st.markdown(f"{i}. `{role}`")
+    else:
+        st.warning("No roles found for current user.")
+    
+    # Show whether user is admin (check admin roles in user's role list)
+    admin_roles = ['STREAMLITPORTALADMINS', 'ACCOUNTADMIN']
+    user_roles_upper = [role.upper() for role in user_info['roles']]
+    is_admin = any(admin_role in user_roles_upper for admin_role in admin_roles)
+    admin_status = "✅ Yes" if is_admin else "❌ No"
+    st.markdown(f"**Portal Administrator:** {admin_status}")
+    
+    if st.button("🔄 Refresh User Roles"):
+        # Clear any cached user info and refresh
+        st.cache_data.clear()
+        st.rerun()
     
 
 

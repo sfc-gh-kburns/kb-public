@@ -187,59 +187,50 @@ def load_image_from_database(conn, image_path):
         return None
 
 # Function to get current user info
-@st.cache_data(ttl=300)
 def get_current_user_info(_conn):
-    """Get current user and their roles"""
+    """Get current user and all their assigned roles"""
     try:
         if hasattr(_conn, 'sql'):  # Snowpark session
-            user_info = _conn.sql("SELECT CURRENT_USER() as username, CURRENT_ROLE() as current_role").to_pandas()
+            # Get current user
+            user_info = _conn.sql("SELECT CURRENT_USER() as username").to_pandas()
             
-            # In Streamlit in Snowflake, SHOW GRANTS is not supported
-            # Use simplified approach: just current role + PUBLIC
-            if st.session_state.get('is_sis', False):
-                user_roles = []  # Can't get all roles in SiS
-            else:
-                # Only try SHOW GRANTS when NOT in SiS (local development)
-                # Handle username column case
-                username_col = 'USERNAME' if 'USERNAME' in user_info.columns else 'username'
-                roles_df = _conn.sql("SHOW GRANTS TO USER " + user_info.iloc[0][username_col]).to_pandas()
-                user_roles = roles_df[roles_df['granted_on'] == 'ROLE']['name'].tolist()
+            # Get all roles assigned to this user from account_usage
+            roles_query = """
+                SELECT DISTINCT ROLE 
+                FROM snowflake.account_usage.grants_to_users 
+                WHERE granted_to = 'USER' AND GRANTEE_NAME = CURRENT_USER()
+            """
+            roles_df = _conn.sql(roles_query).to_pandas()
+            
         else:  # Regular connection
             cursor = _conn.cursor()
-            cursor.execute("SELECT CURRENT_USER() as username, CURRENT_ROLE() as current_role")
-            user_info = pd.DataFrame(cursor.fetchall(), columns=['username', 'current_role'])
+            # Get current user
+            cursor.execute("SELECT CURRENT_USER() as username")
+            user_info = pd.DataFrame(cursor.fetchall(), columns=['username'])
             
-            # In Streamlit in Snowflake, SHOW GRANTS is not supported
-            if st.session_state.get('is_sis', False):
-                user_roles = []  # Can't get all roles in SiS
-            else:
-                # Only try SHOW GRANTS when NOT in SiS (local development)
-                # Handle username column case
-                username_val = user_info.iloc[0]['username'] if 'username' in user_info.columns else user_info.iloc[0].iloc[0]
-                cursor.execute(f"SHOW GRANTS TO USER {username_val}")
-                roles_data = cursor.fetchall()
-                # Filter for roles only
-                user_roles = [row[1] for row in roles_data if row[2] == 'ROLE']
+            # Get all roles assigned to this user from account_usage
+            roles_query = """
+                SELECT DISTINCT ROLE 
+                FROM snowflake.account_usage.grants_to_users 
+                WHERE granted_to = 'USER' AND GRANTEE_NAME = CURRENT_USER()
+            """
+            cursor.execute(roles_query)
+            roles_data = cursor.fetchall()
+            roles_df = pd.DataFrame(roles_data, columns=['ROLE'])
             cursor.close()
             
-        # Build roles list: current role + PUBLIC + any discovered roles
-        # Handle column name case differences
-        if 'current_role' in user_info.columns:
-            current_role = user_info.iloc[0]['current_role']
-        elif 'CURRENT_ROLE' in user_info.columns:
-            current_role = user_info.iloc[0]['CURRENT_ROLE']
-        else:
-            current_role = 'PUBLIC'  # Fallback
+        # Build roles list from database
         all_roles = ['PUBLIC']  # Everyone has PUBLIC role
         
-        # Add current role if it exists and not already in list
-        if current_role and current_role not in all_roles:
-            all_roles.append(current_role)
+        if not roles_df.empty:
+            # Normalize column names for consistency
+            roles_df.columns = roles_df.columns.astype(str).str.upper()
+            user_roles = roles_df['ROLE'].tolist()
             
-        # Add any other discovered roles (only available in local development)
-        for role in user_roles:
-            if role not in all_roles:
-                all_roles.append(role)
+            # Add discovered roles
+            for role in user_roles:
+                if role and role not in all_roles:
+                    all_roles.append(role)
             
         # Handle username column case differences  
         if 'username' in user_info.columns:
@@ -251,12 +242,11 @@ def get_current_user_info(_conn):
             
         return {
             'username': username,
-            'current_role': current_role,
             'roles': all_roles
         }
     except Exception as e:
         st.error(f"Error getting user info: {str(e)}")
-        return {'username': 'UNKNOWN', 'current_role': 'PUBLIC', 'roles': ['PUBLIC']}
+        return {'username': 'UNKNOWN', 'roles': ['PUBLIC']}
 
 # Function to check if user is admin
 def is_portal_admin(user_info):
@@ -266,7 +256,6 @@ def is_portal_admin(user_info):
     return any(admin_role in user_roles_upper for admin_role in admin_roles)
 
 # Function to get accessible apps for current user
-@st.cache_data(ttl=300)
 def get_accessible_apps(_conn, user_info):
     """Get apps accessible to current user based on roles and username"""
     try:
@@ -519,7 +508,6 @@ def main():
     # Sidebar navigation
     st.sidebar.title("🚀 Streamlit Apps Portal")
     st.sidebar.markdown(f"Welcome, **{user_info['username']}**")
-    st.sidebar.markdown(f"Current Role: **{user_info['current_role']}**")
     
     # Show helpful note for non-admin users
     if not st.session_state.is_admin:
