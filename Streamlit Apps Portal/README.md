@@ -10,29 +10,22 @@ A comprehensive portal application for managing and launching Streamlit applicat
 - **Multi-page Navigation**: Clean, organized interface with multiple functional areas
 - **User Documentation**: Built-in help and documentation
 
-## Setup Instructions
+## Documentation
 
-### 1. Database Setup
-Ensure you have a database called `StreamlitPortal` in your Snowflake account.
+[Documentation](https://docs.google.com/document/d/1P5-YC5QnFuWzh1sD6NPNUQy2zgYilMcrRwBheQn9opg/edit?tab=t.0)  <--This links to a Google Sheet that has setup information.  
 
-### 2. Role and Permission Setup
-Run the setup script to create the admin role and permissions:
-```sql
--- Execute the contents of setup_portal.sql in your Snowflake environment
-```
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+## Support
 
-### 4. Configure Connection
-- For local development: Update the connection details in `get_snowflake_connection()` function
-- For Streamlit in Snowflake: No additional configuration needed
+This is a personal project and does not come with any official support.  This is not backed by any company or individual.   It will be maintained and enhanced, but there is no set timetable.
 
-### 5. Deploy and Run
-- **Local**: `streamlit run StreamlitPortal.py`
-- **Snowflake**: Deploy as a Streamlit in Snowflake application
+
+
+## Tech Stack
+
+This is designed to be run in Snowflake using Streamlit.   It has been tested both as a standalone app and using Streamlit in Snowflake, but the percieved value is in Snowflake. 
+
+
 
 ## Usage
 
