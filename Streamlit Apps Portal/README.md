@@ -1,4 +1,5 @@
 # 🚀 Streamlit Apps Portal
+**Note**: This code is for demonstration purposes only and should be adapted for your specific use cases.
 
 > **A beautiful, enterprise-ready portal for managing and launching Streamlit applications in Snowflake**
 
