@@ -1,2 +1,2 @@
 # kb-public
-Public Repo of Shared Projects
+**Note**: This code is for demonstration purposes only and should be adapted for your specific use cases.
