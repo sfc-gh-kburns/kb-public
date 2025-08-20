@@ -3,7 +3,9 @@
 A comprehensive Streamlit application for enhancing data governance in Snowflake through AI-powered documentation, automated data quality monitoring, and contact management. Optimized for **Streamlit in Snowflake (SiS)** with full local development support.
 
 
-[![Watch the video]<img src="https://img.youtube.com/vi/bF6FAMeGEZc/maxresdefault.jpg" width="50%">](https://youtu.be/bF6FAMeGEZc)
+[<img src="https://img.youtube.com/vi/bF6FAMeGEZc/maxresdefault.jpg" width="50%">](https://youtu.be/bF6FAMeGEZc)
+
+
 [<img src="https://img.youtube.com/vi/<VIDEO ID>/maxresdefault.jpg" width="50%">](https://youtu.be/<VIDEO ID>)
 
 
