@@ -1,0 +1,58 @@
+-- Database and Schema Setup for DB_SNOWTOOLS
+-- Run this as ACCOUNTADMIN or a role with appropriate privileges
+-- 
+-- This script creates the necessary database objects for the 
+-- Snowflake Data Quality & Documentation application
+
+-- Create database
+CREATE DATABASE IF NOT EXISTS DB_SNOWTOOLS
+COMMENT = 'Database for Snowflake Data Quality & Documentation application tracking';
+
+-- Create schema
+CREATE SCHEMA IF NOT EXISTS DB_SNOWTOOLS.PUBLIC
+COMMENT = 'Public schema for application tracking tables';
+
+-- Use the database
+USE DATABASE DB_SNOWTOOLS;
+USE SCHEMA PUBLIC;
+
+-- Create DATA_DESCRIPTION_HISTORY table
+CREATE TABLE IF NOT EXISTS DATA_DESCRIPTION_HISTORY (
+    HISTORY_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    DATABASE_NAME VARCHAR(255) NOT NULL,
+    SCHEMA_NAME VARCHAR(255) NOT NULL,
+    OBJECT_TYPE VARCHAR(50) NOT NULL,
+    OBJECT_NAME VARCHAR(255) NOT NULL,
+    COLUMN_NAME VARCHAR(255),
+    BEFORE_DESCRIPTION TEXT,
+    AFTER_DESCRIPTION TEXT,
+    SQL_EXECUTED TEXT,
+    UPDATED_BY VARCHAR(255) DEFAULT CURRENT_USER(),
+    UPDATED_AT TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP()
+)
+COMMENT = 'Tracks all description changes made through the application';
+
+-- Create DATA_QUALITY_RESULTS table
+CREATE TABLE IF NOT EXISTS DATA_QUALITY_RESULTS (
+    RESULT_ID NUMBER AUTOINCREMENT PRIMARY KEY,
+    MONITOR_NAME VARCHAR(255) NOT NULL,
+    DATABASE_NAME VARCHAR(255) NOT NULL,
+    SCHEMA_NAME VARCHAR(255) NOT NULL,
+    TABLE_NAME VARCHAR(255) NOT NULL,
+    COLUMN_NAME VARCHAR(255),
+    METRIC_VALUE NUMBER,
+    METRIC_UNIT VARCHAR(50),
+    THRESHOLD_MIN NUMBER,
+    THRESHOLD_MAX NUMBER,
+    STATUS VARCHAR(20),
+    MEASUREMENT_TIME TIMESTAMP_LTZ,
+    RECORD_INSERTED_AT TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP(),
+    SQL_EXECUTED TEXT
+)
+COMMENT = 'Stores data quality monitoring results from DMFs';
+
+-- Verify table creation
+SHOW TABLES IN SCHEMA DB_SNOWTOOLS.PUBLIC;
+
+-- Display success message
+SELECT 'Database setup completed successfully!' AS MESSAGE; 
