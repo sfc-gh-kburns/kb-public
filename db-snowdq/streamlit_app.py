@@ -2781,7 +2781,7 @@ def configure_monitoring_schedule(key_prefix: str) -> dict:
                 }
             else:
                 interval = st.selectbox(
-                    "Every X hours", 
+                    "Every X hours",
                     options=[1, 2, 4, 6, 8, 12, 24],
                     index=2,
                     key=f"{key_prefix}_hours"
@@ -2913,7 +2913,7 @@ def configure_table_dmfs(conn, database: str, schema: str, table_name: str, key_
                         
                         with dmf_cols[col_idx]:
                             if st.checkbox(
-                                dmf_info['label'],
+                                dmf_info['label'], 
                                 help=dmf_info['help'],
                                 key=f"{key_prefix}_{col_name}_{dmf_key}"
                             ):
@@ -2958,13 +2958,13 @@ def configure_table_dmfs(conn, database: str, schema: str, table_name: str, key_
                             with dmf_cols[col_idx]:
                                 # Check if this DMF was already selected (from bulk action or previous selection)
                                 default_value = col_name in config['column_dmfs'] and dmf_key in config['column_dmfs'][col_name]
-                                
-                                if st.checkbox(
-                                    dmf_info['label'],
-                                    value=default_value,
+                            
+                            if st.checkbox(
+                                dmf_info['label'], 
+                                value=default_value,
                                     help=dmf_info['help'],
                                     key=f"{key_prefix}_{col_name}_{dmf_key}"
-                                ):
+                            ):
                                     selected_dmfs.append(dmf_key)
                         
                         # Store individual column selections
@@ -3017,8 +3017,8 @@ def generate_bulk_dmf_sql(database: str, schema: str, schedule_config: dict, tab
             "",
             "-- Step 2: Add Data Metric Functions"
         ])
-        
-        # Table-level DMFs
+                
+                # Table-level DMFs
         if config['table_dmfs'].get('ROW_COUNT'):
             sql_lines.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT ON ();")
         
@@ -3172,10 +3172,10 @@ def test_dmf_permissions(conn, database: str, schema: str):
         st.markdown("### 💡 Recommendations")
         st.markdown("""
         If you see permission errors, ask your Snowflake administrator to run:
-           ```sql
+        ```sql
         GRANT DATABASE ROLE SNOWFLAKE.DATA_METRIC_USER TO ROLE your_role;
         GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_LOOKUP TO ROLE your_role;
-           ```
+        ```
         """)
     
 def show_data_contacts_page(conn):
@@ -3234,635 +3234,306 @@ def show_data_contacts_page(conn):
             
             # Find current schema index
             current_schema_index = 0
-            if st.session_state.dmf_schema in schemas:
-                current_schema_index = schemas.index(st.session_state.dmf_schema) + 1
+            if st.session_state.get('contacts_schema', '') in schemas:
+                current_schema_index = schemas.index(st.session_state.contacts_schema) + 1
             
             selected_schema = st.selectbox(
-                "Select Schema",
+                "Schema",
                 options=[""] + schemas,
                 index=current_schema_index,
-                key="single_dmf_schema_selector",
+                key="contacts_schema_selector",
                 help="Choose a schema within the selected database"
             )
             
             # Update session state if changed
-            if selected_schema != st.session_state.dmf_schema:
-                st.session_state.dmf_schema = selected_schema
+            if selected_schema != st.session_state.get('contacts_schema', ''):
+                st.session_state.contacts_schema = selected_schema
         else:
             selected_schema = ""
-            st.selectbox("Select Schema", options=[""], disabled=True, key="single_dmf_schema_disabled", help="Select a database first")
+            st.selectbox("Schema", options=[""], disabled=True, key="contacts_schema_disabled", help="Select a database first")
     
     with col3:
-        if selected_db and selected_schema:
-            refresh_key = st.session_state.get('last_refresh', '')
-            tables_df = get_tables_and_views(conn, selected_db, selected_schema, refresh_key)
-            table_names = tables_df['OBJECT_NAME'].tolist() if not tables_df.empty else []
-            
-            selected_table = st.selectbox(
-                "Select Table",
-                options=[""] + table_names,
-                key="single_dmf_table_selector",
-                help="Choose a table to configure with data quality metrics"
-            )
-        else:
-            selected_table = ""
-            st.selectbox("Select Table", options=[""], disabled=True, key="single_dmf_table_disabled", help="Select database and schema first")
+        if st.button("🔄 Refresh Tables", help="Refresh table list from Snowflake", key="contacts_refresh_tables"):
+            st.cache_data.clear()
+            st.session_state['last_refresh'] = str(time.time())
+            st.rerun()
     
-    if selected_db and selected_schema and selected_table:
-        st.markdown(f"### 🎯 Configure DMFs for {selected_table}")
-        
-        # Get columns for the selected table
-        refresh_key = st.session_state.get('last_refresh', '')
-        columns_df = get_columns(conn, selected_db, selected_schema, selected_table, refresh_key)
-        
-        if not columns_df.empty:
-            # Schedule Configuration Section
-            st.markdown("#### 📅 Set Monitoring Schedule")
-            st.markdown("**Important**: A schedule must be set before adding DMFs to the table.")
-        
-        schedule_type = st.radio(
-            "Choose schedule type:",
-            options=["Periodic (Minutes/Hours)", "Daily at specific time", "On data changes"],
-            help="How often should the data quality checks run?",
-                key="single_dmf_schedule_type"
-        )
-        
-        schedule_config = {}
-        
-        if schedule_type == "Periodic (Minutes/Hours)":
-            col1, col2 = st.columns(2)
-            with col1:
-                interval_type = st.selectbox(
-                    "Interval type",
-                    options=["Minutes", "Hours"],
-                    help="Run every X minutes or hours",
-                        key="single_dmf_interval_type"
-                )
-            with col2:
-                if interval_type == "Minutes":
-                    interval_value = st.selectbox(
-                        "Every X minutes",
-                        options=[5, 15, 30, 60],
-                        index=2,  # Default to 30 minutes
-                        help="Minimum interval is 5 minutes",
-                            key="single_dmf_minute_interval"
-                    )
-                    schedule_config = {
-                        'schedule_expression': f'{interval_value} MINUTE',
-                        'description': f'Every {interval_value} minutes'
-                    }
-                else:  # Hours
-                    interval_value = st.selectbox(
-                        "Every X hours",
-                        options=[1, 2, 3, 4, 6, 8, 12, 24],
-                        index=3,  # Default to 4 hours
-                        help="Run every X hours",
-                            key="single_dmf_hour_interval"
-                    )
-                    schedule_config = {
-                        'schedule_expression': f'USING CRON 0 */{interval_value} * * * UTC',
-                        'description': f'Every {interval_value} hours'
-                    }
-        
-        elif schedule_type == "Daily at specific time":
-            col1, col2 = st.columns(2)
-            with col1:
-                hour = st.selectbox(
-                    "Hour (24-hour format)",
-                    options=list(range(24)),
-                    index=6,  # Default to 6 AM
-                    help="Hour of the day to run (0-23)",
-                        key="single_dmf_daily_hour"
-                )
-            with col2:
-                minute = st.selectbox(
-                    "Minute",
-                    options=[0, 15, 30, 45],
-                    index=0,  # Default to top of hour
-                    help="Minute of the hour to run",
-                        key="single_dmf_daily_minute"
-                )
-            
-            schedule_config = {
-                'schedule_expression': f'USING CRON {minute} {hour} * * * UTC',
-                'description': f'Daily at {hour:02d}:{minute:02d} UTC'
-            }
-        
-        else:  # On data changes
-            schedule_config = {
-                'schedule_expression': 'TRIGGER_ON_CHANGES',
-                'description': 'When data in the table changes (INSERT, UPDATE, DELETE)'
-            }
-            st.info("💡 **Note**: This triggers DMFs whenever the table data changes. Use for frequently updated tables where you need immediate quality feedback.")
-        
-        # Display selected schedule
-        if schedule_config:
-            st.success(f"📅 **Selected Schedule**: {schedule_config['description']}")
-            with st.expander("View schedule details"):
-                fully_qualified_table = get_fully_qualified_name(selected_db, selected_schema, selected_table)
-                st.code(f"ALTER TABLE {fully_qualified_table} SET DATA_METRIC_SCHEDULE = '{schedule_config['schedule_expression']}';", language="sql")
-        
-            st.markdown("---")
-            
-                # DMF Configuration
-            st.markdown("#### 🔍 Data Quality Metrics Configuration")
-                
-                # Table-level DMFs
-            st.markdown("##### Table-Level Metrics")
-            table_dmf_selections = {}
-                
-            col1, col2 = st.columns(2)
-            with col1:
-                table_dmf_selections['ROW_COUNT'] = st.checkbox(
-                    f"✅ {SYSTEM_DMFS['ROW_COUNT']['label']}", 
-                    help=SYSTEM_DMFS['ROW_COUNT']['help'],
-                    key="single_row_count"
-                )
-                
-            with col2:
-                # Freshness requires a timestamp column
-                timestamp_columns = [col for col in columns_df['COLUMN_NAME'] 
-                                    if any(word in col.upper() for word in ['DATE', 'TIME', 'TIMESTAMP', 'CREATED', 'UPDATED'])]
-                
-                if timestamp_columns:
-                    table_dmf_selections['FRESHNESS'] = st.checkbox(
-                        f"✅ {SYSTEM_DMFS['FRESHNESS']['label']}", 
-                        help=SYSTEM_DMFS['FRESHNESS']['help'],
-                        key="single_freshness"
-                    )
-                    if table_dmf_selections['FRESHNESS']:
-                        freshness_column = st.selectbox("Timestamp Column", timestamp_columns, key="single_freshness_col")
-                else:
-                    st.info("💡 **Data Freshness**: No timestamp columns detected in this table")
-            
-            # Column-level DMFs with smart data type filtering
-                st.markdown("---")
-                st.markdown("##### Column-Level Metrics")
-                st.markdown("*Smart filtering: Only compatible metrics shown for each column's data type*")
-                
-                column_dmf_assignments = {}
-                    
-                for _, col_row in columns_df.iterrows():
-                    col_name = col_row['COLUMN_NAME']
-                    data_type = col_row['DATA_TYPE']
-                    
-                    # Get compatible DMFs for this data type
-                    compatible_dmfs = get_compatible_dmfs_for_data_type(data_type)
-                    
-                    if compatible_dmfs:
-                        with st.expander(f"📊 {col_name} ({data_type})", expanded=False):
-                            st.caption(f"**Data Type:** {data_type}")
-                            st.caption(f"**Compatible Metrics:** {len(compatible_dmfs)} available")
-                            
-                            selected_dmfs = []
-                            for dmf_key in compatible_dmfs:
-                                dmf_info = SYSTEM_DMFS[dmf_key]
-                                if st.checkbox(
-                                    f"✅ {dmf_info['label']}", 
-                                    help=dmf_info['help'],
-                                    key=f"single_{col_name}_{dmf_key}"
-                                ):
-                                        selected_dmfs.append(dmf_key)
-                            
-                            if selected_dmfs:
-                                column_dmf_assignments[col_name] = selected_dmfs
-                                st.success(f"Selected: {', '.join([SYSTEM_DMFS[dmf]['label'] for dmf in selected_dmfs])}")
-                    else:
-                        with st.expander(f"📊 {col_name} ({data_type})", expanded=False):
-                            st.caption(f"**Data Type:** {data_type}")
-                            st.info("No compatible data quality metrics available for this data type")
-                
-                # Generate and execute SQL
-                has_table_dmfs = any(table_dmf_selections.values())
-                has_column_dmfs = bool(column_dmf_assignments)
-                    
-                if has_table_dmfs or has_column_dmfs:
-                    st.markdown("---")
-                    st.markdown("#### 🚀 Apply Data Quality Metrics")
-                    
-                    # Generate SQL
-                    sql_commands = []
-                    full_table_name = get_fully_qualified_name(selected_db, selected_schema, selected_table)
-                    
-                    sql_commands.append(f"-- DMF setup for {full_table_name}")
-                    sql_commands.append("")
-                    
-                    # Set schedule
-                    if schedule_config:
-                        sql_commands.append("-- Step 1: Set monitoring schedule (required)")
-                        sql_commands.append(f"ALTER TABLE {full_table_name} SET DATA_METRIC_SCHEDULE = '{schedule_config['schedule_expression']}';")
-                        sql_commands.append("")
-                    
-                    # Add DMFs
-                    sql_commands.append("-- Step 2: Add Data Metric Functions")
-                    
-                    # Table-level DMFs
-                    if table_dmf_selections.get('ROW_COUNT'):
-                        sql_commands.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT ON ();")
-                    
-                    if table_dmf_selections.get('FRESHNESS') and 'freshness_column' in locals():
-                        quoted_freshness_col = quote_identifier(freshness_column)
-                        sql_commands.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.FRESHNESS ON ({quoted_freshness_col});")
-                    
-                    # Column-level DMFs
-                    if column_dmf_assignments:
-                        sql_commands.append("")
-                        sql_commands.append("-- Column-level DMFs")
-                        
-                        for col_name, dmf_list in column_dmf_assignments.items():
-                            quoted_col_name = quote_identifier(col_name)
-                            sql_commands.append(f"-- DMFs for column: {quoted_col_name}")
-                            for dmf_key in dmf_list:
-                                    sql_commands.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON ({quoted_col_name});")
-                            sql_commands.append("")
-                    
-                    sql_commands.append("")
-                    sql_commands.append("-- View results with:")
-                    sql_commands.append("-- SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS;")
-                    
-                    generated_sql = "\n".join(sql_commands)
-                    
-                    # Display SQL and actions
-                    with st.expander("📄 View Generated SQL Commands", expanded=False):
-                        st.code(generated_sql, language="sql")
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.download_button(
-                            label="📥 Download SQL File",
-                            data=generated_sql,
-                            file_name=f"dmf_setup_{selected_table}.sql",
-                            mime="text/sql"
-                        )
-                    
-                    with col2:
-                        if st.button("🔧 Apply Data Quality Metrics", type="primary", help="Execute the generated SQL to add DMFs to the table", key="single_apply_dmfs"):
-                            with st.spinner(f"Applying DMFs to {selected_table}..."):
-                                success_count = 0
-                                error_count = 0
-                                
-                                # Execute each SQL statement individually
-                                for sql_line in sql_commands:
-                                    if sql_line.strip() and not sql_line.strip().startswith('--'):
-                                        try:
-                                            if execute_comment_sql(conn, sql_line, 'DMF'):
-                                                success_count += 1
-                                                # Log DMF history
-                                                if 'ADD DATA METRIC FUNCTION' in sql_line.upper():
-                                                    import re
-                                                    # Extract DMF type
-                                                    dmf_match = re.search(r'SNOWFLAKE\.CORE\.(\w+)', sql_line.upper())
-                                                    if dmf_match:
-                                                        dmf_type = dmf_match.group(1)
-                                                        # Extract column name if present
-                                                        column_match = re.search(r'ON \(([^)]+)\)', sql_line)
-                                                        if column_match and column_match.group(1).strip():
-                                                            column_name = column_match.group(1).strip().strip('"').strip("'")
-                                                        else:
-                                                            column_name = None
-                                                        # Log to history
-                                                        log_dmf_history(conn, selected_db, selected_schema, selected_table, 
-                                                                    dmf_type, column_name, "ADDED")
-                                            else:
-                                                error_count += 1
-                                                st.error(f"❌ Failed to execute: {sql_line}")
-                                        except Exception as e:
-                                            error_count += 1
-                                            st.error(f"❌ Error executing: {sql_line}")
-                                            st.error(f"Error details: {str(e)}")
-                                
-                                # Show final results
-                                if error_count == 0:
-                                    st.success(f"✅ Successfully applied {success_count} DMF(s) to {selected_table}")
-                                    st.info("💡 View results with: `SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS;`")
-                                else:
-                                    if success_count > 0:
-                                        st.warning(f"⚠️ Partially successful: {success_count} succeeded, {error_count} failed")
-                                    else:
-                                        st.error(f"❌ All {error_count} DMF(s) failed to apply. Check your permissions and table ownership.")
-                        else:
-                            st.info("👆 Select data quality metrics above to generate SQL commands")
-                else:
-                    st.info("No columns found in the selected table.")
-        else:
-            st.info("Please select a database, schema, and table to get started.")
-
-# ========================================================================================
-# DATA CONTACTS PAGE - COMPLETE IMPLEMENTATION BELOW
-# ========================================================================================
-    
-    with col2:
-        if selected_db:
-            schemas = get_schemas(conn, selected_db)
-            selected_schema = st.selectbox(
-                "Filter by Schema (Optional)",
-                options=["All Schemas"] + schemas,
-                key="multi_dmf_schema_filter",
-                help="Optionally filter tables by schema"
-            )
-        else:
-            selected_schema = ""
-            st.selectbox("Filter by Schema", options=[""], disabled=True, key="multi_dmf_schema_disabled")
-    
-    if selected_db:
+    if selected_db and selected_schema:
         st.markdown("---")
-        st.markdown("### 📋 Select Tables for Data Quality Monitoring")
+        st.markdown("### 📋 Select Tables for Contact Assignment")
         
-        # Get tables based on selection
+        # Get tables from the selected schema
         refresh_key = st.session_state.get('last_refresh', '')
-        
-        if selected_schema == "All Schemas":
-            # Get tables from all schemas
-            all_tables = []
-            schemas = get_schemas(conn, selected_db)
-            for schema in schemas:
-                try:
-                    schema_tables = get_tables_and_views(conn, selected_db, schema, refresh_key)
-                    if not schema_tables.empty:
-                        schema_tables['SCHEMA_NAME'] = schema  # Add schema column
-                        all_tables.append(schema_tables)
-                except:
-                    continue  # Skip schemas we can't access
-            
-            if all_tables:
-                tables_df = pd.concat(all_tables, ignore_index=True)
-            else:
-                tables_df = pd.DataFrame()
-        else:
-            # Get tables from specific schema
-            tables_df = get_tables_and_views(conn, selected_db, selected_schema, refresh_key)
-            if not tables_df.empty:
-                tables_df['SCHEMA_NAME'] = selected_schema
+        tables_df = get_tables_and_views(conn, selected_db, selected_schema, refresh_key)
         
         if not tables_df.empty:
-            # Filter and selection options
-            col1, col2, col3 = st.columns(3)
+            # Add selection column and prepare for multi-select
+            display_df = tables_df[['OBJECT_NAME', 'OBJECT_TYPE', 'CURRENT_DESCRIPTION']].copy()
+            display_df['SELECT'] = False  # Add selection column
+            
+            # Add contact information for each table
+            st.info("🔄 Loading contact information for tables...")
+            contact_columns = {'DATA_STEWARD': [], 'TECHNICAL_SUPPORT': [], 'ACCESS_APPROVER': []}
+            
+            for _, row in display_df.iterrows():
+                table_name = row['OBJECT_NAME']
+                try:
+                    # Get existing contacts for this table
+                    existing_contacts = get_table_contacts(conn, selected_db, selected_schema, table_name, refresh_key)
+                    
+                    # Add contact info to columns
+                    contact_columns['DATA_STEWARD'].append(existing_contacts.get('STEWARD', '') or 'Not assigned')
+                    contact_columns['TECHNICAL_SUPPORT'].append(existing_contacts.get('SUPPORT', '') or 'Not assigned')
+                    contact_columns['ACCESS_APPROVER'].append(existing_contacts.get('ACCESS_APPROVAL', '') or 'Not assigned')
+                except Exception as e:
+                    # If we can't get contacts for a table, show as not assigned
+                    contact_columns['DATA_STEWARD'].append('Not assigned')
+                    contact_columns['TECHNICAL_SUPPORT'].append('Not assigned')
+                    contact_columns['ACCESS_APPROVER'].append('Not assigned')
+            
+            # Add contact columns to display dataframe
+            display_df['DATA_STEWARD'] = contact_columns['DATA_STEWARD']
+            display_df['TECHNICAL_SUPPORT'] = contact_columns['TECHNICAL_SUPPORT']
+            display_df['ACCESS_APPROVER'] = contact_columns['ACCESS_APPROVER']
+            
+            # Reorder columns to show contacts after basic info
+            display_df = display_df[['SELECT', 'OBJECT_NAME', 'OBJECT_TYPE', 'DATA_STEWARD', 'TECHNICAL_SUPPORT', 'ACCESS_APPROVER', 'CURRENT_DESCRIPTION']]
+            
+            # Multi-select data editor with contact information
+            st.markdown("**Select tables to assign contacts to:**")
+            st.caption("💡 Current contact assignments are shown for reference. New assignments will overwrite existing ones.")
+            
+            edited_df = st.data_editor(
+                display_df,
+                column_config={
+                    "SELECT": st.column_config.CheckboxColumn(
+                        "Select",
+                        help="Check to select this table for contact assignment",
+                        default=False,
+                    ),
+                    "OBJECT_NAME": "Table/View Name", 
+                    "OBJECT_TYPE": "Type",
+                    "DATA_STEWARD": st.column_config.TextColumn(
+                        "🔍 Data Steward",
+                        help="Current Data Steward contact",
+                        width="medium"
+                    ),
+                    "TECHNICAL_SUPPORT": st.column_config.TextColumn(
+                        "🛠️ Technical Support", 
+                        help="Current Technical Support contact",
+                        width="medium"
+                    ),
+                    "ACCESS_APPROVER": st.column_config.TextColumn(
+                        "🔐 Access Approver",
+                        help="Current Access Approver contact", 
+                        width="medium"
+                    ),
+                    "CURRENT_DESCRIPTION": st.column_config.TextColumn("Description", width="large")
+                },
+                disabled=["OBJECT_NAME", "OBJECT_TYPE", "DATA_STEWARD", "TECHNICAL_SUPPORT", "ACCESS_APPROVER", "CURRENT_DESCRIPTION"],
+                hide_index=True,
+                use_container_width=True,
+                key="contacts_table_selector"
+            )
+            
+            # Get selected tables
+            selected_tables = edited_df[edited_df['SELECT'] == True]
+            
+            if not selected_tables.empty:
+                st.success(f"✅ Selected {len(selected_tables)} table(s) for contact assignment")
+                
+                # Show selected tables summary
+                with st.expander(f"📋 **Selected Tables ({len(selected_tables)})**", expanded=False):
+                    for _, row in selected_tables.iterrows():
+                        st.markdown(f"• **{row['OBJECT_NAME']}** ({row['OBJECT_TYPE']})")
+            
+            st.markdown("---")
+            st.markdown("### 📞 Bulk Contact Assignment")
+            st.markdown("**Assign the same contacts to all selected tables:**")
+        
+        # Get available contacts
+        available_contacts = get_all_contacts(conn)
+        
+        # Contact assignment form
+        col1, col2, col3 = st.columns(3)
+        
+        if len(available_contacts) > 1:  # More than just "None"
             with col1:
-                show_only_tables = st.checkbox("Only show tables (exclude views)", help="Filter to show only base tables", key="multi_show_tables_only")
-            with col2:
-                if st.button("🔄 Refresh Tables", help="Refresh table list from Snowflake", key="multi_refresh_tables"):
-                    st.cache_data.clear()
-                    st.session_state['last_refresh'] = str(time.time())
-                    st.rerun()
-            with col3:
-                select_all_tables = st.checkbox("Select All Tables", key="multi_select_all_tables")
-            
-            # Apply filters
-            filtered_tables_df = tables_df.copy()
-            if show_only_tables:
-                filtered_tables_df = filtered_tables_df[filtered_tables_df['OBJECT_TYPE'] == 'BASE TABLE']
-            
-            if not filtered_tables_df.empty:
-                # Add selection column
-                filtered_tables_df.insert(0, "Select", select_all_tables)
-                
-                # Reorder columns for better display
-                column_order = ["Select", "OBJECT_NAME", "SCHEMA_NAME", "OBJECT_TYPE", "CURRENT_DESCRIPTION", "HAS_DESCRIPTION"]
-                filtered_tables_df = filtered_tables_df[column_order]
-                
-                # Table selection interface
-                st.markdown("**Select tables to configure with data quality metrics:**")
-                
-                edited_tables_df = st.data_editor(
-                    filtered_tables_df,
-                    use_container_width=True,
-                    column_config={
-                        "Select": st.column_config.CheckboxColumn("Select", help="Select tables for DMF configuration"),
-                        "OBJECT_NAME": "Table Name",
-                        "SCHEMA_NAME": "Schema",
-                        "OBJECT_TYPE": "Type",
-                        "CURRENT_DESCRIPTION": st.column_config.TextColumn("Description", width="large"),
-                        "HAS_DESCRIPTION": "Has Description"
-                    },
-                    hide_index=True,
-                    key="multi_dmf_table_selection"
+                steward_contact = st.selectbox(
+                    "🔍 Data Steward Contact",
+                    options=available_contacts,
+                    index=0,
+                    help="Contact responsible for data accuracy and reliability",
+                    key="bulk_steward_contact"
                 )
-                
-                # Get selected tables
-                selected_tables_df = edited_tables_df[edited_tables_df["Select"] == True]
-                
-                if not selected_tables_df.empty:
-                    st.success(f"✅ Selected {len(selected_tables_df)} table(s)")
-                    
-                    # Show selected tables grouped by schema
-                    schemas_with_tables = selected_tables_df.groupby('SCHEMA_NAME')['OBJECT_NAME'].apply(list).to_dict()
-                    for schema, tables in schemas_with_tables.items():
-                        st.info(f"**{schema}**: {', '.join(tables)}")
-                    
-                    st.markdown("---")
-                    st.markdown("### 🎯 Configure Table-Level DMFs")
-                    
-                    # Table-level DMF selection
-                    col1, col2 = st.columns(2)
-                    
-                    table_dmf_selections = {}
-                    
-                    with col1:
-                        table_dmf_selections['ROW_COUNT'] = st.checkbox(
-                            f"✅ {SYSTEM_DMFS['ROW_COUNT']['label']}", 
-                            help=f"{SYSTEM_DMFS['ROW_COUNT']['help']} - Will be applied to all selected tables",
-                            key="multi_row_count"
-                        )
-                    
-                    with col2:
-                        table_dmf_selections['FRESHNESS'] = st.checkbox(
-                            f"✅ {SYSTEM_DMFS['FRESHNESS']['label']}", 
-                            help=f"{SYSTEM_DMFS['FRESHNESS']['help']} - Requires timestamp column selection",
-                            key="multi_freshness"
-                        )
-                        
-                        if table_dmf_selections['FRESHNESS']:
-                            freshness_column = st.text_input(
-                                "Timestamp Column Name",
-                                placeholder="e.g., CREATED_DATE, UPDATED_AT",
-                                help="Enter the name of the timestamp column (must exist in all selected tables)",
-                                key="multi_freshness_col"
-                            )
-                    
-                    # Schedule configuration
-                    if any(table_dmf_selections.values()):
-                        st.markdown("---")
-                        st.markdown("#### 📅 Set Monitoring Schedule")
-                        
-                        schedule_type = st.radio(
-                            "Choose schedule type:",
-                            options=["Periodic (Hours)", "Daily at specific time", "On data changes"],
-                            help="How often should the data quality checks run?",
-                            key="multi_dmf_schedule_type"
-                        )
-                        
-                        schedule_config = {}
-                        
-                        if schedule_type == "Periodic (Hours)":
-                            interval_value = st.selectbox(
-                                "Every X hours",
-                                options=[1, 2, 3, 4, 6, 8, 12, 24],
-                                index=3,  # Default to 4 hours
-                                help="Run every X hours",
-                                key="multi_dmf_hour_interval"
-                            )
-                            schedule_config = {
-                                'schedule_expression': f'USING CRON 0 */{interval_value} * * * UTC',
-                                'description': f'Every {interval_value} hours'
-                            }
-                        
-                        elif schedule_type == "Daily at specific time":
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                hour = st.selectbox(
-                                    "Hour (24-hour format)",
-                                    options=list(range(24)),
-                                    index=6,  # Default to 6 AM
-                                    help="Hour of the day to run (0-23)",
-                                    key="multi_dmf_daily_hour"
-                                )
-                            with col2:
-                                minute = st.selectbox(
-                                    "Minute",
-                                    options=[0, 15, 30, 45],
-                                    index=0,  # Default to top of hour
-                                    help="Minute of the hour to run",
-                                    key="multi_dmf_daily_minute"
-                                )
-                            
-                            schedule_config = {
-                                'schedule_expression': f'USING CRON {minute} {hour} * * * UTC',
-                                'description': f'Daily at {hour:02d}:{minute:02d} UTC'
-                            }
-                        
-                        else:  # On data changes
-                            schedule_config = {
-                                'schedule_expression': 'TRIGGER_ON_CHANGES',
-                                'description': 'When data in the table changes (INSERT, UPDATE, DELETE)'
-                            }
-                            st.info("💡 **Note**: This triggers DMFs whenever table data changes. Use for frequently updated tables.")
-                        
-                        # Generate and execute SQL
-                        if schedule_config:
-                            st.markdown("---")
-                            st.markdown("#### 🚀 Apply Data Quality Metrics")
-                            
-                            # Generate SQL for all selected tables
-                            sql_commands = []
-                            
-                            sql_commands.append(f"-- Multi-table DMF setup for {len(selected_tables_df)} table(s)")
-                            sql_commands.append(f"-- Schedule: {schedule_config['description']}")
-                            sql_commands.append("")
-                            
-                            for _, row in selected_tables_df.iterrows():
-                                table_name = row['OBJECT_NAME']
-                                schema_name = row['SCHEMA_NAME']
-                                full_table_name = get_fully_qualified_name(selected_db, schema_name, table_name)
-                                
-                                sql_commands.append(f"-- ========================================")
-                                sql_commands.append(f"-- DMF Configuration for {schema_name}.{table_name}")
-                                sql_commands.append(f"-- ========================================")
-                                sql_commands.append("")
-                                
-                                # Set schedule
-                                sql_commands.append("-- Step 1: Set monitoring schedule")
-                                sql_commands.append(f"ALTER TABLE {full_table_name} SET DATA_METRIC_SCHEDULE = '{schedule_config['schedule_expression']}';")
-                                sql_commands.append("")
-                                
-                                # Add DMFs
-                                sql_commands.append("-- Step 2: Add Data Metric Functions")
-                                
-                                if table_dmf_selections.get('ROW_COUNT'):
-                                    sql_commands.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT ON ();")
-                                
-                                if table_dmf_selections.get('FRESHNESS') and 'freshness_column' in locals() and freshness_column:
-                                    quoted_freshness_col = quote_identifier(freshness_column)
-                                    sql_commands.append(f"ALTER TABLE {full_table_name} ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.FRESHNESS ON ({quoted_freshness_col});")
-                                
-                                sql_commands.append("")
-                            
-                            sql_commands.append("-- View results with:")
-                            sql_commands.append("-- SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS;")
-                            
-                            generated_sql = "\n".join(sql_commands)
-                            
-                            # Display SQL and actions
-                            with st.expander("📄 View Generated SQL Commands", expanded=False):
-                                st.code(generated_sql, language="sql")
-                            
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                st.download_button(
-                                    label="📥 Download SQL File",
-                                    data=generated_sql,
-                                    file_name=f"multi_dmf_setup_{len(selected_tables_df)}_tables.sql",
-                                    mime="text/sql"
-                                )
-                            
-                            with col2:
-                                if st.button("🔧 Apply Data Quality Metrics", type="primary", help="Execute the generated SQL to add DMFs to all selected tables", key="multi_apply_dmfs"):
-                                    with st.spinner(f"Applying DMFs to {len(selected_tables_df)} table(s)..."):
-                                        success_count = 0
-                                        error_count = 0
-                                        
-                                        # Execute each SQL statement individually
-                                        for sql_line in sql_commands:
-                                            if sql_line.strip() and not sql_line.strip().startswith('--'):
-                                                try:
-                                                    if execute_comment_sql(conn, sql_line, 'DMF'):
-                                                        success_count += 1
-                                                        # Log DMF history
-                                                        if 'ADD DATA METRIC FUNCTION' in sql_line.upper():
-                                                            import re
-                                                            # Extract table name from SQL
-                                                            table_match = re.search(r'ALTER TABLE\s+(?:"?[^".\s]+"?\.)?(?:"?[^".\s]+"?\.)?"?([^".\s]+)"?\s+ADD', sql_line.upper())
-                                                            schema_match = re.search(r'ALTER TABLE\s+(?:"?[^".\s]+"?\.)?(?:"?([^".\s]+)"?\.)', sql_line.upper())
-                                                            
-                                                            if table_match:
-                                                                table_name_from_sql = table_match.group(1).strip('"')
-                                                            else:
-                                                                table_name_from_sql = "UNKNOWN_TABLE"
-                                                            
-                                                            if schema_match:
-                                                                schema_name_from_sql = schema_match.group(1).strip('"')
-                                                            else:
-                                                                schema_name_from_sql = "UNKNOWN_SCHEMA"
-                                                            
-                                                            # Extract DMF type
-                                                            dmf_match = re.search(r'SNOWFLAKE\.CORE\.(\w+)', sql_line.upper())
-                                                            if dmf_match:
-                                                                dmf_type = dmf_match.group(1)
-                                                                # Extract column name if present
-                                                                column_match = re.search(r'ON \(([^)]+)\)', sql_line)
-                                                                if column_match and column_match.group(1).strip():
-                                                                    column_name = column_match.group(1).strip().strip('"').strip("'")
-                                                                else:
-                                                                    column_name = None
-                                                                # Log to history
-                                                                log_dmf_history(conn, selected_db, schema_name_from_sql, table_name_from_sql, 
-                                                                               dmf_type, column_name, "ADDED")
-                                                    else:
-                                                        error_count += 1
-                                                        st.error(f"❌ Failed to execute: {sql_line}")
-                                                except Exception as e:
-                                                    error_count += 1
-                                                    st.error(f"❌ Error executing: {sql_line}")
-                                                    st.error(f"Error details: {str(e)}")
-                                        
-                                        # Show final results
-                                        if error_count == 0:
-                                            st.success(f"✅ Successfully applied {success_count} DMF(s) to {len(selected_tables_df)} table(s)")
-                                            st.info("💡 View results with: `SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS;`")
-                                        else:
-                                            if success_count > 0:
-                                                st.warning(f"⚠️ Partially successful: {success_count} succeeded, {error_count} failed")
-                                            else:
-                                                st.error(f"❌ All {error_count} DMF(s) failed to apply. Check your permissions and table ownership.")
-                else:
-                    st.info("👆 Select one or more tables above to configure data quality metrics")
-            else:
-                st.info("No tables found matching the current filters.")
+            
+            with col2:
+                support_contact = st.selectbox(
+                    "🛠️ Technical Support Contact", 
+                    options=available_contacts,
+                        index=0,
+                        help="Contact for technical assistance and support",
+                        key="bulk_support_contact"
+                )
+            
+            with col3:
+                approver_contact = st.selectbox(
+                    "🔐 Access Approver Contact",
+                    options=available_contacts,
+                    index=0,
+                    help="Contact for data access approval and authorization",
+                    key="bulk_approver_contact"
+                )
         else:
-            st.info("No tables found in the selected database/schema.")
+            st.warning("⚠️ No contacts found in your account.")
+            st.info("Create contacts first using Snowflake SQL commands, then refresh this page.")
+            
+            # Show text inputs as fallback when no contacts are available
+            with col1:
+                steward_contact = st.text_input(
+                    "🔍 Data Steward Contact",
+                    placeholder="database.schema.contact_name",
+                    help="Fully qualified contact name for data stewardship",
+                    key="bulk_steward_text"
+                )
+        
+            with col2:
+                support_contact = st.text_input(
+                    "🛠️ Technical Support Contact", 
+                    placeholder="database.schema.contact_name",
+                    help="Fully qualified contact name for technical support",
+                    key="bulk_support_text"
+                )
+            
+            with col3:
+                approver_contact = st.text_input(
+                    "🔐 Access Approver Contact",
+                    placeholder="database.schema.contact_name", 
+                    help="Fully qualified contact name for access approval",
+                    key="bulk_approver_text"
+                )
+        
+        # Generate SQL for all selected tables
+        contact_assignments = []
+        if steward_contact and steward_contact != "None":
+            contact_assignments.append(f"STEWARD = {steward_contact}")
+        if support_contact and support_contact != "None":
+            contact_assignments.append(f"SUPPORT = {support_contact}")
+        if approver_contact and approver_contact != "None":
+            contact_assignments.append(f"ACCESS_APPROVAL = {approver_contact}")
+        
+        if contact_assignments:
+                st.markdown("---")
+                st.markdown("### 📄 Generated SQL Commands")
+                
+                # Generate SQL for all selected tables
+                sql_commands = []
+                sql_commands.append(f"-- Bulk contact assignment for {len(selected_tables)} table(s)")
+                sql_commands.append(f"-- Contacts: {', '.join(contact_assignments)}")
+                sql_commands.append("")
+                
+                for _, row in selected_tables.iterrows():
+                    table_name = row['OBJECT_NAME']
+                    full_table_name = get_fully_qualified_name(selected_db, selected_schema, table_name)
+                    
+                    sql_commands.append(f"-- Contact assignment for {table_name}")
+                    sql_commands.append(f"ALTER TABLE {full_table_name} SET CONTACT {', '.join(contact_assignments)};")
+                    sql_commands.append("")
+                
+                generated_sql = "\n".join(sql_commands)
+                
+                # Display SQL and actions
+                with st.expander("📄 View Generated SQL Commands", expanded=False):
+                    st.code(generated_sql, language="sql")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.download_button(
+                        label="📥 Download SQL File",
+                        data=generated_sql,
+                        file_name=f"bulk_contact_assignment_{len(selected_tables)}_tables.sql",
+                        mime="text/sql"
+                    )
+            
+                
+                with col2:
+                    if st.button("🔗 Apply Contact Assignments", type="primary", help="Execute the SQL to set contacts on all selected tables"):
+                        with st.spinner(f"Setting contacts for {len(selected_tables)} table(s)..."):
+                            success_count = 0
+                            error_count = 0
+                            
+                            # Execute contact assignment for each table
+                            for _, row in selected_tables.iterrows():
+                                table_name = row['OBJECT_NAME']
+                                full_table_name = get_fully_qualified_name(selected_db, selected_schema, table_name)
+                                sql_command = f"ALTER TABLE {full_table_name} SET CONTACT {', '.join(contact_assignments)};"
+                                
+                                try:
+                                    if execute_comment_sql(conn, sql_command, 'CONTACT'):
+                                        success_count += 1
+                                        
+                                        # Log contact history for each contact type and table
+                                        if steward_contact != "None":
+                                            log_contact_history(conn, selected_db, selected_schema, table_name, 
+                                                              'STEWARD', 'None', steward_contact)
+                                        
+                                        if support_contact != "None":
+                                            log_contact_history(conn, selected_db, selected_schema, table_name, 
+                                                              'SUPPORT', 'None', support_contact)
+                                        
+                                        if approver_contact != "None":
+                                            log_contact_history(conn, selected_db, selected_schema, table_name, 
+                                                              'ACCESS_APPROVAL', 'None', approver_contact)
+                                    else:
+                                        error_count += 1
+                                        st.error(f"❌ Failed to set contacts for {table_name}")
+                                except Exception as e:
+                                    error_count += 1
+                                    st.error(f"❌ Error setting contacts for {table_name}: {str(e)}")
+                            
+                            # Show final results
+                            if error_count == 0:
+                                st.success(f"✅ Successfully set contacts for all {success_count} table(s)")
+                                # st.balloons()
+                            else:
+                                if success_count > 0:
+                                    st.warning(f"⚠️ Partially successful: {success_count} succeeded, {error_count} failed")
+                                else:
+                                    st.error(f"❌ All {error_count} table(s) failed. Check your permissions and table ownership.")
+        else:
+            st.info("👆 Select one or more tables above to assign contacts")
     else:
-        st.info("Please select a database to get started.")
+        st.info("Please select a database and schema to get started.")
+
+    # View existing contacts section
+    st.markdown("---")
+    st.markdown("### 👥 View Existing Contacts")
+    
+    try:
+        # Try to show contacts (may fail due to permissions)
+        show_contacts_query = "SHOW CONTACTS IN ACCOUNT LIMIT 10"
+        
+        if hasattr(conn, 'sql'):
+            contacts_result = conn.sql(show_contacts_query).to_pandas()
+        else:
+            contacts_result = pd.read_sql(show_contacts_query, conn)
+        
+        if not contacts_result.empty:
+            st.dataframe(contacts_result, use_container_width=True)
+        else:
+            st.info("No contacts found in your account.")
+            
+    except Exception as e:
+        st.warning("Unable to retrieve contacts - you may need additional permissions.")
+        st.markdown("""
+        To view and manage contacts, you need:
+        - Access to `SHOW CONTACTS IN ACCOUNT`
+        - Access to `SNOWFLAKE.ACCOUNT_USAGE.CONTACTS` 
+        - Appropriate contact management privileges
+        
+        Contact your administrator for access.
+        """)
 
 def show_dmf_documentation_and_samples():
     """Tab 3: Documentation and Sample Code."""
@@ -3884,253 +3555,107 @@ def show_dmf_documentation_and_samples():
         ```
         
         #### 2. Table Ownership or Privileges
-        - You need **ownership** or appropriate **privileges** on tables to add DMFs
-        - Alternative: `MODIFY` privilege on the table
+        - You must **own** the table or have **MODIFY** privileges on it
+        - DMFs can only be added to tables you own or have explicit permissions for
         
         #### 3. Warehouse Access
-        - Access to a warehouse to execute the DMF setup commands
-        - The warehouse will be used for monitoring execution
+        - Access to a warehouse for executing DMF operations
+        - Warehouse will be used for both setup and monitoring execution
         """)
-    
-    # System DMFs Documentation
-    with st.expander("📊 **Complete System DMF Reference**", expanded=False):
-        st.markdown("### Available System Data Metric Functions")
-        
-        # Table-level DMFs
-        st.markdown("#### Table-Level Metrics")
-        table_dmfs = {k: v for k, v in SYSTEM_DMFS.items() if v['level'] == 'table'}
-        
-        for dmf_key, dmf_info in table_dmfs.items():
-            st.markdown(f"""
-            **{dmf_info['label']}** (`{dmf_key}`)
-            - **Description**: {dmf_info['description']}
-            - **Usage**: `ALTER TABLE table_name ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON ();`
-            """)
-        
-        st.markdown("---")
-        
-        # Column-level DMFs by category
-        st.markdown("#### Column-Level Metrics")
-        
-        # Group by data type compatibility
-        universal_dmfs = {k: v for k, v in SYSTEM_DMFS.items() if v['level'] == 'column' and 'ALL' in v['data_types']}
-        numeric_dmfs = {k: v for k, v in SYSTEM_DMFS.items() if v['level'] == 'column' and 'NUMBER' in str(v['data_types'])}
-        string_dmfs = {k: v for k, v in SYSTEM_DMFS.items() if v['level'] == 'column' and 'VARCHAR' in str(v['data_types'])}
-        timestamp_dmfs = {k: v for k, v in SYSTEM_DMFS.items() if v['level'] == 'column' and 'TIMESTAMP' in str(v['data_types'])}
-        
-        st.markdown("##### Universal (All Data Types)")
-        for dmf_key, dmf_info in universal_dmfs.items():
-            st.markdown(f"""
-            **{dmf_info['label']}** (`{dmf_key}`)
-            - **Description**: {dmf_info['description']}
-            - **Compatible Types**: All data types
-            - **Usage**: `ALTER TABLE table_name ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON (column_name);`
-            """)
-        
-        if numeric_dmfs:
-            st.markdown("##### Numeric Data Types")
-            for dmf_key, dmf_info in numeric_dmfs.items():
-                if dmf_key not in universal_dmfs:  # Avoid duplicates
-                    st.markdown(f"""
-                    **{dmf_info['label']}** (`{dmf_key}`)
-                    - **Description**: {dmf_info['description']}
-                    - **Compatible Types**: {', '.join(dmf_info['data_types'][:5])}{'...' if len(dmf_info['data_types']) > 5 else ''}
-                    - **Usage**: `ALTER TABLE table_name ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON (column_name);`
-                    """)
-        
-        if string_dmfs:
-            st.markdown("##### String Data Types")
-            for dmf_key, dmf_info in string_dmfs.items():
-                if dmf_key not in universal_dmfs:  # Avoid duplicates
-                    st.markdown(f"""
-                    **{dmf_info['label']}** (`{dmf_key}`)
-                    - **Description**: {dmf_info['description']}
-                    - **Compatible Types**: {', '.join(dmf_info['data_types'])}
-                    - **Usage**: `ALTER TABLE table_name ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON (column_name);`
-                    """)
-        
-        if timestamp_dmfs:
-            st.markdown("##### Timestamp Data Types")
-            for dmf_key, dmf_info in timestamp_dmfs.items():
-                if dmf_key not in universal_dmfs:  # Avoid duplicates
-                    st.markdown(f"""
-                    **{dmf_info['label']}** (`{dmf_key}`)
-                    - **Description**: {dmf_info['description']}
-                    - **Compatible Types**: {', '.join(dmf_info['data_types'])}
-                    - **Usage**: `ALTER TABLE table_name ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.{dmf_key} ON (column_name);`
-                    """)
-    
-    # Sample Code Section
-    with st.expander("💻 **Sample Code and Examples**", expanded=False):
-        st.markdown("### Complete Setup Example")
         
         st.code("""
--- Step 1: Grant required permissions (run as ACCOUNTADMIN)
-GRANT DATABASE ROLE SNOWFLAKE.DATA_METRIC_USER TO ROLE DATA_ENGINEER;
-GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_LOOKUP TO ROLE DATA_ENGINEER;
-
--- Step 2: Set monitoring schedule (required before adding DMFs)
-ALTER TABLE MY_DATABASE.MY_SCHEMA.MY_TABLE 
-SET DATA_METRIC_SCHEDULE = 'USING CRON 0 6 * * * UTC';  -- Daily at 6 AM UTC
-
--- Step 3: Add table-level DMFs
-ALTER TABLE MY_DATABASE.MY_SCHEMA.MY_TABLE 
-ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT ON ();
-
--- Step 4: Add column-level DMFs
-ALTER TABLE MY_DATABASE.MY_SCHEMA.MY_TABLE 
-ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT ON (customer_id);
-
-ALTER TABLE MY_DATABASE.MY_SCHEMA.MY_TABLE 
-ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.UNIQUE_COUNT ON (email);
-
-ALTER TABLE MY_DATABASE.MY_SCHEMA.MY_TABLE 
-ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.FRESHNESS ON (created_date);
-
--- Step 5: View results
-SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
-WHERE TABLE_NAME = 'MY_TABLE'
-ORDER BY MEASUREMENT_TIME DESC;
+-- Grant required database roles
+            GRANT DATABASE ROLE SNOWFLAKE.DATA_METRIC_USER TO ROLE your_role;
+            GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_LOOKUP TO ROLE your_role;
         """, language="sql")
         
-        st.markdown("### Schedule Options")
-        
-        st.code("""
--- Periodic schedules
-ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = '30 MINUTE';  -- Every 30 minutes
-ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = 'USING CRON 0 */4 * * * UTC';  -- Every 4 hours
-
--- Daily schedules
-ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = 'USING CRON 0 6 * * * UTC';  -- Daily at 6 AM UTC
-ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = 'USING CRON 30 14 * * * UTC';  -- Daily at 2:30 PM UTC
-
--- Trigger on data changes
-ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = 'TRIGGER_ON_CHANGES';
-        """, language="sql")
-        
-        st.markdown("### Viewing Results")
-        
-        st.code("""
--- View all monitoring results
-SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
-ORDER BY MEASUREMENT_TIME DESC;
-
--- Filter by specific table
-SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
-WHERE TABLE_DATABASE = 'MY_DB' 
-  AND TABLE_SCHEMA = 'MY_SCHEMA'
-  AND TABLE_NAME = 'MY_TABLE'
-ORDER BY MEASUREMENT_TIME DESC;
-
--- Filter by metric type
-SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
-WHERE METRIC_NAME = 'NULL_COUNT'
-ORDER BY MEASUREMENT_TIME DESC;
-
--- Get latest results per table/metric
-SELECT 
-    TABLE_DATABASE,
-    TABLE_SCHEMA,
-    TABLE_NAME,
-    METRIC_NAME,
-    VALUE,
-    MEASUREMENT_TIME
-FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
-QUALIFY ROW_NUMBER() OVER (PARTITION BY TABLE_DATABASE, TABLE_SCHEMA, TABLE_NAME, METRIC_NAME ORDER BY MEASUREMENT_TIME DESC) = 1
-ORDER BY TABLE_NAME, METRIC_NAME;
-        """, language="sql")
-    
-    # Troubleshooting Section
-    with st.expander("🔧 **Troubleshooting Common Issues**", expanded=False):
         st.markdown("""
-        ### Common Error Messages and Solutions
-        
-        #### 1. Permission Errors
-        **Error**: `Insufficient privileges to operate on table`
-        **Solution**: 
-        - Ensure you have ownership or MODIFY privileges on the table
-        - Grant required database roles: `SNOWFLAKE.DATA_METRIC_USER` and `SNOWFLAKE.DATA_QUALITY_MONITORING_LOOKUP`
-        
-        #### 2. Schedule Not Set
-        **Error**: `Data metric schedule must be set before adding DMFs`
-        **Solution**: 
-        - Always set a schedule first: `ALTER TABLE table_name SET DATA_METRIC_SCHEDULE = 'schedule_expression';`
-        
-        #### 3. Invalid Data Type
-        **Error**: `Function 'FUNCTION_NAME' does not exist or not authorized`
-        **Solution**: 
-        - Check that the DMF is compatible with your column's data type
-        - Use this app's Single Table Setup for automatic data type filtering
-        
-        #### 4. Column Not Found
-        **Error**: `Column 'COLUMN_NAME' does not exist`
-        **Solution**: 
-        - Verify column names are spelled correctly
-        - Use proper case sensitivity (Snowflake is case-sensitive for quoted identifiers)
-        
-        #### 5. No Results in Monitoring View
-        **Issue**: `SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS` is empty
-        **Solution**: 
-        - Wait for the first scheduled execution
-        - Check that the schedule expression is valid
-        - Verify the table has data to measure
+        If you see permission errors, ask your Snowflake administrator to run:
+            ```sql
+        GRANT DATABASE ROLE SNOWFLAKE.DATA_METRIC_USER TO ROLE your_role;
+        GRANT APPLICATION ROLE SNOWFLAKE.DATA_QUALITY_MONITORING_LOOKUP TO ROLE your_role;
+            ```
         """)
     
-    # Best Practices Section
-    with st.expander("✨ **Best Practices**", expanded=False):
+    # Available DMFs section
+    with st.expander("📊 **Available Data Metric Functions**", expanded=False):
         st.markdown("""
-        ### Data Quality Monitoring Best Practices
+        ### System DMFs Available
         
-        #### 1. Start Small
-        - Begin with a few critical tables and basic metrics (ROW_COUNT, NULL_COUNT)
-        - Gradually expand to more tables and sophisticated metrics
+        **Table-Level Metrics:**
+        - **Row Count**: Total number of rows in the table
         
-        #### 2. Choose Appropriate Schedules
-        - **High-frequency tables**: Use TRIGGER_ON_CHANGES or frequent intervals (15-30 minutes)
-        - **Batch-loaded tables**: Use daily schedules aligned with your ETL processes
-        - **Reference tables**: Use less frequent schedules (daily or weekly)
+        **Column-Level Metrics:**
+        - **Data Freshness**: Measures how recent the data is (requires timestamp column)
+        - **Null Count**: Count of NULL values in a column
+        - **Duplicate Count**: Count of duplicate values in a column  
+        - **Unique Count**: Count of unique, non-NULL values in a column
         
-        #### 3. Focus on Business-Critical Columns
-        - Prioritize columns used in joins, calculations, and business logic
-        - Monitor primary keys, foreign keys, and required business fields
+        ### Smart Data Type Filtering
         
-        #### 4. Set Up Alerts
-        - Use Snowflake's notification features to alert on quality issues
-        - Create views or dashboards to visualize quality trends
+        This application automatically shows only compatible metrics for each column based on its data type:
         
-        #### 5. Regular Review
-        - Periodically review monitoring results
-        - Adjust schedules and metrics based on actual usage patterns
-        - Remove monitoring for deprecated tables/columns
-        
-        #### 6. Performance Considerations
-        - Avoid over-monitoring with too many metrics or too frequent schedules
-        - Consider the impact on warehouse usage and costs
-        - Use appropriate warehouse sizes for monitoring workloads
+        - **Timestamp columns** (DATE, TIME, TIMESTAMP_*): All metrics including Freshness
+        - **Numeric columns** (NUMBER, INT, FLOAT, etc.): All metrics except Freshness
+        - **Text columns** (VARCHAR, STRING, TEXT): All metrics except Freshness
+        - **All other types**: Basic metrics (Null Count, Duplicate Count, Unique Count)
         """)
     
-    # Links and Resources
-    st.markdown("---")
-    st.markdown("### 📖 Additional Resources")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
+    # Schedule examples
+    with st.expander("⏰ **Schedule Examples**", expanded=False):
         st.markdown("""
-        **Official Documentation**
-        - [Snowflake Data Quality Overview](https://docs.snowflake.com/en/user-guide/data-quality-intro)
-        - [System DMFs Reference](https://docs.snowflake.com/en/user-guide/data-quality-system-dmfs)
-        - [Data Quality Monitoring](https://docs.snowflake.com/en/user-guide/data-quality-monitoring)
+        ### Common Monitoring Schedules
+        
+        **Periodic Monitoring:**
+        ```sql
+        -- Every 4 hours
+        ALTER TABLE my_table SET DATA_METRIC_SCHEDULE = 'USING CRON 0 */4 * * * UTC';
+        
+        -- Every 30 minutes  
+        ALTER TABLE my_table SET DATA_METRIC_SCHEDULE = '30 MINUTE';
+        ```
+        
+        **Daily Monitoring:**
+        ```sql
+        -- Daily at 6:00 AM UTC
+        ALTER TABLE my_table SET DATA_METRIC_SCHEDULE = 'USING CRON 0 6 * * * UTC';
+        ```
+        
+        **Event-Driven Monitoring:**
+        ```sql
+        -- Trigger on data changes (INSERT, UPDATE, DELETE)
+        ALTER TABLE my_table SET DATA_METRIC_SCHEDULE = 'TRIGGER_ON_CHANGES';
+        ```
         """)
     
-    with col2:
+    # View results section
+    with st.expander("📈 **Viewing Results**", expanded=False):
         st.markdown("""
-        **Related Features**
-        - [Data Classification](https://docs.snowflake.com/en/user-guide/data-classification)
-        - [Data Governance](https://docs.snowflake.com/en/user-guide/governance-overview)
-        - [Snowflake Cortex](https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview)
+        ### Query DMF Results
+        
+        After setting up DMFs, view results using:
+        
+        ```sql
+        -- View all DMF results
+        SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS;
+        
+        -- Filter by specific table
+        SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
+        WHERE TABLE_NAME = 'YOUR_TABLE_NAME';
+        
+        -- Recent results only
+        SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
+        WHERE MEASUREMENT_TIME >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+        ORDER BY MEASUREMENT_TIME DESC;
+        ```
+        
+        ### Result Columns
+        - **METRIC_NAME**: The type of metric (ROW_COUNT, NULL_COUNT, etc.)
+        - **TABLE_DATABASE/SCHEMA/NAME**: Location of the monitored table
+        - **ARGUMENT_NAMES/TYPES**: Column information for column-level metrics
+        - **VALUE**: The measured value
+        - **MEASUREMENT_TIME**: When the measurement was taken
         """)
-
 
 def show_history_page(conn):
     """Display the history page."""
@@ -4524,18 +4049,18 @@ def show_history_page(conn):
                     st.markdown("**All Quality Check Results:**")
                     st.dataframe(
                         quality_results_df,
-                    use_container_width=True,
-                    column_config={
-                        "MONITOR_NAME": "Monitor",
-                        "DATABASE_NAME": "Database",
-                        "SCHEMA_NAME": "Schema",
-                        "TABLE_NAME": "Table",
-                        "COLUMN_NAME": "Column",
-                        "METRIC_VALUE": "Value",
-                        "METRIC_UNIT": "Unit",
+                        use_container_width=True,
+                        column_config={
+                            "MONITOR_NAME": "Monitor",
+                            "DATABASE_NAME": "Database",
+                            "SCHEMA_NAME": "Schema",
+                            "TABLE_NAME": "Table",
+                            "COLUMN_NAME": "Column",
+                            "METRIC_VALUE": "Value",
+                            "METRIC_UNIT": "Unit",
                             "THRESHOLD_MIN": "Min Threshold",
                             "THRESHOLD_MAX": "Max Threshold",
-                        "STATUS": "Status",
+                            "STATUS": "Status",
                             "MEASUREMENT_TIME": st.column_config.DatetimeColumn("Measured At"),
                             "RECORD_INSERTED_AT": st.column_config.DatetimeColumn("Recorded At"),
                             "ARGUMENT_TYPES": st.column_config.TextColumn("Arg Types", width="small"),
@@ -4604,10 +4129,6 @@ def show_history_page(conn):
             st.info("• No DMFs have been configured yet")
             st.info("• The quality monitoring tables don't exist")
             st.info("• There are permission issues accessing the data")
-
-# ========================================================================================
-# RUN APPLICATION
-# ========================================================================================
 
 if __name__ == "__main__":
     main()
